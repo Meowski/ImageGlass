@@ -22,6 +22,7 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Windows.Forms;
 
 namespace ImageGlass.Base {
@@ -39,26 +40,28 @@ namespace ImageGlass.Base {
         /// <param name="path">Full path of file or directory</param>
         /// <returns></returns>
         public static bool CheckPathWritable(PathType type, string path) {
-            try {
-                // if path is directory
-                if (type == PathType.Dir) {
-                    TestDirWrittable(path);
-                }
-                // If path is file
-                else if (File.Exists(path)) {
-                    using (File.OpenWrite(path)) { }
-                }
-                // if path is non-exist file
-                else if (type == PathType.File) {
-                    var dir = Path.GetDirectoryName(path);
-                    TestDirWrittable(dir);
-                }
+            return CriticalSection(() => {
+                try {
+                    // if path is directory
+                    if (type == PathType.Dir) {
+                        TestDirWrittable(path);
+                    }
+                    // If path is file
+                    else if (File.Exists(path)) {
+                        using (File.OpenWrite(path)) { }
+                    }
+                    // if path is non-exist file
+                    else if (type == PathType.File) {
+                        var dir = Path.GetDirectoryName(path);
+                        TestDirWrittable(dir);
+                    }
 
-                return true;
-            }
-            catch {
-                return false;
-            }
+                    return true;
+                }
+                catch {
+                    return false;
+                }
+            });
         }
 
 
@@ -155,6 +158,51 @@ namespace ImageGlass.Base {
                                       .Where(c => c.GetType() == type);
         }
 
+        /// <summary>
+        /// Attempts to execute the given action in a named mutex shared between ImageGlass processes
+        /// </summary>
+        /// <param name="action"></param>
+        public static void CriticalSection(Action action) {
+            CriticalSection<object>(() => {
+                action.Invoke();
+                return null;
+            });
+        }
+
+        /// <summary>
+        /// Attempts to execute the given function in a named mutex shared between ImageGlass processes
+        /// </summary>
+        /// <param name="func"></param>
+        public static T CriticalSection<T>(Func<T> func) {
+
+            T result = default;
+            var mutexGUID = "{73F74C61-C844-4C98-839C-D0AAEFF336C4}";
+            var timeout = 2000; // two seconds
+
+            using var mutex = new Mutex(false, mutexGUID);
+            var acquiredMutex = false;
+            try {
+                acquiredMutex = mutex.WaitOne(timeout);
+            }
+            catch (AbandonedMutexException) {
+                // This exception is thrown for documentation purposes. 
+                // We still acquire the mutex in this case.
+                acquiredMutex = true;
+            }
+            finally {
+                try {
+                    // Whether we acquired the mutex or not, run the function
+                    result = func.Invoke();
+                }
+                finally {
+                    if (acquiredMutex) {
+                        mutex.ReleaseMutex();
+                    }
+                }
+            }
+
+            return result;
+        }
         #endregion
 
 

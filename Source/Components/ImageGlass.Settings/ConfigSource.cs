@@ -78,7 +78,7 @@ namespace ImageGlass.Settings {
             var doc = new XmlDocument();
 
             try {
-                doc.Load(filename);
+                Helpers.CriticalSection(() => doc.Load(filename));
             }
             catch (Exception) {
                 return null;
@@ -95,7 +95,7 @@ namespace ImageGlass.Settings {
             var list = new Dictionary<string, string>();
 
             // file does not exist
-            if (!File.Exists(filename)) {
+            if (!Helpers.CriticalSection(() => File.Exists(filename))) {
                 return list;
             }
 
@@ -168,7 +168,7 @@ namespace ImageGlass.Settings {
             doc.AppendChild(root); // </ImageGlass>
 
             try {
-                doc.Save(filename);
+                Helpers.CriticalSection(() => doc.Save(filename));
             }
             catch { }
         }
